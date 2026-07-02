@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIOA Embed Test — Sibling-Iframe Handoff (CS-142)</title>
+  <style>
+    :root {
+      --panel-bg: #ffffff;
+      --panel-border: #d9dde3;
+      --panel-radius: 12px;
+      --panel-shadow: 0 8px 30px rgba(0,0,0,0.18);
+      --accent: #12b5b0;
+      --ink: #1a1f26;
+      --muted: #6b7480;
+      --page-bg: #eef1f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--page-bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+
+    /* Fake site content so the panel floats over a "real page" */
+    .site {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 64px 24px 200px;
+    }
+    .site h1 { font-size: 34px; margin: 0 0 12px; }
+    .site p  { color: var(--muted); line-height: 1.6; font-size: 16px; }
+
+    /* The launch CTA — stands in for the KC / landing-page trigger */
+    .launch-cta {
+      display: inline-block;
+      margin-top: 28px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 26px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .launch-cta:hover { filter: brightness(0.94); }
+
+    /* Shared panel geometry — BOTH frames occupy this identical box.
+       This is the crux of the "no seam" test: two iframes, one panel shape,
+       user cannot tell them apart. */
+    .aioa-panel {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      width: 720px;          /* wide form-factor stand-in for the larger KC */
+      max-width: calc(100vw - 48px);
+      height: 78vh;
+      max-height: 820px;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--panel-radius);
+      box-shadow: var(--panel-shadow);
+      overflow: hidden;
+      display: none;          /* hidden until invoked */
+      flex-direction: column;
+      z-index: 1000;
+    }
+    .aioa-panel.is-active { display: flex; }
+
+    .aioa-panel__bar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--panel-border);
+      background: var(--ink);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .aioa-panel__bar button {
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .aioa-panel__body { flex: 1 1 auto; overflow: auto; }
+    .aioa-panel__body iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+    /* KC placeholder — the real larger-KC isn't built yet. This proves the
+       choreography (show -> hide -> re-show) without needing the real agent. */
+    .kc-placeholder {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 32px;
+      color: var(--muted);
+    }
+    .kc-placeholder h2 { color: var(--ink); margin: 0 0 8px; font-size: 20px; }
+    .kc-placeholder .kc-cta {
+      margin-top: 22px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 22px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .kc-placeholder .returned {
+      margin-top: 18px;
+      padding: 10px 14px;
+      background: #e6faf8;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      color: var(--ink);
+      font-size: 14px;
+      display: none;
+    }
+    .kc-placeholder.post-survey .returned { display: block; }
+    .kc-placeholder.post-survey .pre-survey { display: none; }
+
+    /* Tiny status log so we can SEE the postMessage handshake during the test */
+    .debug {
+      position: fixed;
+      left: 24px;
+      bottom: 24px;
+      width: 360px;
+      max-width: calc(100vw - 48px);
+      background: #10151b;
+      color: #9fe7e2;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      border-radius: 8px;
+      padding: 12px 14px;
+      z-index: 1001;
+      max-height: 220px;
+      overflow: auto;
+    }
+    .debug b { color: #fff; }
+    .debug div { margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <div class="site">
+    <h1>AIOA Embed Test Harness</h1>
+    <p>
+      This page stands in for a Kinetiv landing page. The panel bottom-right is the
+      shared surface. Two iframes take turns inside it — a KC placeholder and the
+      Cognito survey — styled identically so the handoff reads as seamless. This is
+      the CS-142 sibling-iframe test.
+    </p>
+    <button class="launch-cta" id="openKc">Start your AI Opportunity Assessment</button>
+  </div>
+
+  <!-- The shared panel. Only ONE body is visible at a time. -->
+  <div class="aioa-panel" id="panel">
+    <div class="aioa-panel__bar">
+      <span id="panelTitle">Kinetiv Copilot</span>
+      <button id="closePanel" aria-label="Close">&times;</button>
+    </div>
+
+    <!-- KC placeholder body -->
+    <div class="aioa-panel__body" id="kcBody">
+      <div class="kc-placeholder" id="kcPlaceholder">
+        <div class="pre-survey">
+          <h2>Kinetiv Copilot (placeholder)</h2>
+          <p>Stand-in for the larger-form-factor KC.<br>In production this is the KC agent.</p>
+          <button class="kc-cta" id="launchSurvey">Begin the assessment &rarr;</button>
+        </div>
+        <div class="returned">
+          &#10003; Survey submitted &mdash; KC reopened automatically.<br>
+          <small>The seam-free handoff worked.</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Survey body (Cognito). Loaded on demand so it doesn't submit-on-hidden. -->
+    <div class="aioa-panel__body" id="surveyBody" style="display:none;">
+      <!-- src injected by JS when the survey is launched -->
+      <iframe id="surveyFrame" title="AIOA Survey" allow="payment"></iframe>
+    </div>
+  </div>
+
+  <div class="debug" id="debug"><b>postMessage log</b></div>
+
+  <script>
+    // ---- Config ---------------------------------------------------------
+    // Cognito form iframe src (from Publish > iFrame). Two-page matrix test form.
+    var COGNITO_SRC = "https://www.cognitoforms.com/f/DDmW0o0wXU6Can1jP9fAlw/1";
+    // The redirect stub lives on the SAME origin (this GitHub Pages site),
+    // so postMessage origin checks are same-origin and simple.
+    var SELF_ORIGIN = window.location.origin;
+    // --------------------------------------------------------------------
+
+    var panel        = document.getElementById("panel");
+    var panelTitle   = document.getElementById("panelTitle");
+    var kcBody       = document.getElementById("kcBody");
+    var surveyBody   = document.getElementById("surveyBody");
+    var surveyFrame  = document.getElementById("surveyFrame");
+    var kcPlaceholder= document.getElementById("kcPlaceholder");
+    var debug        = document.getElementById("debug");
+
+    function log(msg) {
+      var d = document.createElement("div");
+      d.textContent = "[" + new Date().toLocaleTimeString() + "] " + msg;
+      debug.appendChild(d);
+      debug.scrollTop = debug.scrollHeight;
+    }
+
+    function showKc() {
+      surveyBody.style.display = "none";
+      kcBody.style.display = "block";
+      panelTitle.textContent = "Kinetiv Copilot";
+    }
+    function showSurvey() {
+      kcBody.style.display = "none";
+      surveyBody.style.display = "block";
+      panelTitle.textContent = "AI Opportunity Assessment";
+    }
+
+    // Open the panel (KC first) — the landing-page CTA
+    document.getElementById("openKc").addEventListener("click", function () {
+      panel.classList.add("is-active");
+      showKc();
+      log("Panel opened → KC placeholder shown.");
+    });
+
+    // Close the whole panel
+    document.getElementById("closePanel").addEventListener("click", function () {
+      panel.classList.remove("is-active");
+      log("Panel closed.");
+    });
+
+    // KC hands off to the survey — inject src only now (avoids hidden-submit
+    // quirks and defers the Cognito load until actually needed)
+    document.getElementById("launchSurvey").addEventListener("click", function () {
+      if (!surveyFrame.getAttribute("src")) {
+        surveyFrame.setAttribute("src", COGNITO_SRC);
+        log("Survey iframe src set → " + COGNITO_SRC);
+      }
+      showSurvey();
+      log("KC → survey handoff: survey shown.");
+    });
+
+    // The core of the spike: hear SURVEY_DONE from the redirect stub, then
+    // hide the survey and re-show KC — no seam.
+    window.addEventListener("message", function (e) {
+      log("message from " + e.origin + " : " + JSON.stringify(e.data));
+      // Same-origin stub only. Cognito's own frame posts resize chatter from
+      // cognitoforms.com — we ignore anything that isn't our SURVEY_DONE.
+      if (e.origin !== SELF_ORIGIN) return;
+      if (e.data && e.data.type === "SURVEY_DONE") {
+        kcPlaceholder.classList.add("post-survey");
+        showKc();
+        log("✓ SURVEY_DONE received → KC reopened. Handoff complete.");
+      }
+    });
+
+    log("Harness ready. Origin: " + SELF_ORIGIN);
+  </script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment received</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: #ffffff;
+      color: #1a1f26;
+      text-align: center;
+    }
+    .box { padding: 24px; }
+    .check { font-size: 42px; color: #12b5b0; }
+    p { color: #6b7480; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <!--
+    Redirect stub (CS-142).
+    Cognito's post-submit redirect points the survey iframe HERE. This page's
+    only job is to tell the PARENT window that the survey finished, so the
+    harness can hide the survey frame and re-open KC — a seam-free handoff.
+
+    Loaded inside the survey iframe → window.parent is the harness.
+    Same origin (both on this GitHub Pages site) → we can target SELF_ORIGIN.
+  -->
+  <div class="box">
+    <div class="check">&#10003;</div>
+    <p>Assessment received. Returning you to Kinetiv&hellip;</p>
+  </div>
+
+  <script>
+    (function () {
+      var payload = { type: "SURVEY_DONE", ts: Date.now() };
+      try {
+        // Target our own origin explicitly (not "*") — safe + precise.
+        window.parent.postMessage(payload, window.location.origin);
+      } catch (e) {
+        // Fallback if origin targeting is ever rejected in testing.
+        window.parent.postMessage(payload, "*");
+      }
+    })();
+  </script>
+</body>
+</html>
