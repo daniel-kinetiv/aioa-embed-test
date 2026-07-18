@@ -57,8 +57,8 @@
       bottom: 24px;
       width: 720px;          /* wide form-factor stand-in for the larger KC */
       max-width: calc(100vw - 48px);
-      height: 78vh;
-      max-height: 820px;
+      height: 92vh;
+      max-height: 1000px;
       background: var(--panel-bg);
       border: 1px solid var(--panel-border);
       border-radius: var(--panel-radius);
@@ -90,8 +90,11 @@
       cursor: pointer;
       line-height: 1;
     }
-    .aioa-panel__body { flex: 1 1 auto; overflow: auto; }
-    .aioa-panel__body iframe { width: 100%; height: 100%; border: 0; display: block; }
+    .aioa-panel__body { flex: 1 1 auto; overflow: auto; display: flex; flex-direction: column; }
+    .aioa-panel__body iframe { width: 100%; flex: 1 1 auto; border: 0; display: block; }
+    /* Thin host-page-owned launch bar under the real agent frame */
+    .kc-launch-bar { flex: 0 0 auto; padding: 10px; border-top: 1px solid var(--panel-border); text-align: center; background: #fff; }
+    .kc-cta { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; }
 
     /* KC placeholder — the real larger-KC isn't built yet. This proves the
        choreography (show -> hide -> re-show) without needing the real agent. */
@@ -170,18 +173,13 @@
       <button id="closePanel" aria-label="Close">&times;</button>
     </div>
 
-    <!-- KC placeholder body -->
+    <!-- KC body: now the REAL AIOA agent (Copilot Studio webchat), not a placeholder div.
+         Loaded once on panel open, kept alive, toggled show/hide exactly as the div was.
+         CS-178 step-1 reconvene test: does the proven choreography drive a real agent? -->
     <div class="aioa-panel__body" id="kcBody">
-      <div class="kc-placeholder" id="kcPlaceholder">
-        <div class="pre-survey">
-          <h2>Kinetiv Copilot (placeholder)</h2>
-          <p>Stand-in for the larger-form-factor KC.<br>In production this is the KC agent.</p>
-          <button class="kc-cta" id="launchSurvey">Begin the assessment &rarr;</button>
-        </div>
-        <div class="returned">
-          &#10003; Survey submitted &mdash; KC reopened automatically.<br>
-          <small>The seam-free handoff worked.</small>
-        </div>
+      <iframe id="agentFrame" title="AIOA Agent"></iframe>
+      <div class="kc-launch-bar">
+        <button class="kc-cta" id="launchSurvey">Begin the assessment &rarr;</button>
       </div>
     </div>
 
@@ -198,6 +196,8 @@
     // ---- Config ---------------------------------------------------------
     // Cognito form iframe src (from Publish > iFrame). Two-page matrix test form.
     var COGNITO_SRC = "https://www.cognitoforms.com/f/DDmW0o0wXU6Can1jP9fAlw/1";
+    // The REAL published AIOA agent (Copilot Studio webchat, Sandbox env, no-auth).
+    var AGENT_SRC = "https://copilotstudio.microsoft.com/environments/c1a1c68c-9a64-edff-ba6c-f6126be5ee14/bots/kin_AIOA/webchat?__version__=2";
     // The redirect stub lives on the SAME origin (this GitHub Pages site),
     // so postMessage origin checks are same-origin and simple.
     var SELF_ORIGIN = window.location.origin;
@@ -208,7 +208,7 @@
     var kcBody       = document.getElementById("kcBody");
     var surveyBody   = document.getElementById("surveyBody");
     var surveyFrame  = document.getElementById("surveyFrame");
-    var kcPlaceholder= document.getElementById("kcPlaceholder");
+    var agentFrame   = document.getElementById("agentFrame");
     var debug        = document.getElementById("debug");
 
     function log(msg) {
@@ -220,20 +220,25 @@
 
     function showKc() {
       surveyBody.style.display = "none";
-      kcBody.style.display = "block";
+      kcBody.style.display = "flex";
       panelTitle.textContent = "Kinetiv Copilot";
     }
     function showSurvey() {
       kcBody.style.display = "none";
-      surveyBody.style.display = "block";
+      surveyBody.style.display = "flex";
       panelTitle.textContent = "AI Opportunity Assessment";
     }
 
-    // Open the panel (KC first) — the landing-page CTA
+    // Open the panel (agent first) — the landing-page CTA.
+    // Inject the real agent src once, on first open (kept alive thereafter).
     document.getElementById("openKc").addEventListener("click", function () {
+      if (!agentFrame.getAttribute("src")) {
+        agentFrame.setAttribute("src", AGENT_SRC);
+        log("Agent iframe src set → real AIOA agent loading.");
+      }
       panel.classList.add("is-active");
       showKc();
-      log("Panel opened → KC placeholder shown.");
+      log("Panel opened → real AIOA agent shown.");
     });
 
     // Close the whole panel
@@ -261,9 +266,8 @@
       // cognitoforms.com — we ignore anything that isn't our SURVEY_DONE.
       if (e.origin !== SELF_ORIGIN) return;
       if (e.data && e.data.type === "SURVEY_DONE") {
-        kcPlaceholder.classList.add("post-survey");
         showKc();
-        log("✓ SURVEY_DONE received → KC reopened. Handoff complete.");
+        log("✓ SURVEY_DONE received → real AIOA agent re-shown. Reconvene test: type a message to fire the confirmation node.");
       }
     });
 
